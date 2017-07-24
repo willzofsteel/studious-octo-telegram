@@ -7,6 +7,18 @@ $(document).ready(function () {
     uploadMethod: 'PUT'
   });
 
+  function convertParamsStringArrayIntoObj(params) {
+    var hash = {};
+    params.forEach(function (item) {
+      var keyvalue = item.split("="),
+        key = keyvalue[0],
+        value = keyvalue[1];
+      hash[key] = value;
+    });
+
+    return hash;
+  }
+
 
   //1st mcs endpoint - intiate an asset
   //2nd upload the parts
@@ -33,5 +45,22 @@ $(document).ready(function () {
 
   function uploadFiles() {
     r.upload();
+  }
+
+  function mcsInitiateAssetForUpload(fileName, size) {
+    //var url = "https://api.cimediacloud.com/upload/multipart";
+    var url = "https://io.cimediacloud.com/upload/multipart"
+    $.ajax({
+      url: url,
+      dataType: "json",
+      headers: {
+        "Authorization": "Bearer 75100e5ffc5d43f98749ad0e8a947a03"
+      },
+      method: "POST",
+      data: {
+        "name": fileName,
+        "size": size,
+      }
+    });
   }
 });

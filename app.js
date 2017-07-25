@@ -1,27 +1,29 @@
 $(document).ready(function () {
+   var bearer = "Bearer 99905faaa8a64913b9ca162464ca9acd";
 
   $('#upload-btn').click(uploadFiles);
 
   function initResumable(targetFunc) {
     var r = new Resumable({
       target: targetFunc,
-      maxChunkRetries: 0,
+      maxChunkRetries: 1,
       chunkSize: 5242880,
-      forceChunkSize: true,
+      forceChunkSize: false,
       uploadMethod: 'PUT',
       testChunks: false,
+      prioritizeFirstAndLastChunk: true,
+      fileParameterName: 'part',
       headers: {
         "Authorization": bearer
       }
     });
 
-    r.assignBrowse(document.getElementById('file-input'));
     r.on('fileAdded', function (file, event) { r.upload(); console.log('file-added'); });
     r.on('chunkingComplete', function (file) { console.log('chunking-complete'); });
     r.on('fileSuccess', function (file, message) { console.log('file-success'); });
     r.on('fileError', function (file, message) { console.log('file-error'); });
     return r;
-  }
+  };
 
   function uploadFiles() {
     var files = $('#file-input')[0].files;
@@ -36,14 +38,14 @@ $(document).ready(function () {
         });
 
         resumablejs.addFile(file);
-        resumablejs.on('fileSuccess', function (file, message) {
+        resumablejs.on('complete', function (file, message) {
           mcsCompleteMultipartUploadForAsset(assetId, function (data) {
             console.log("uploaded completed for " + assetId);
           });
         });
       });
     };
-  }
+  };
 
   function convertParamsStringArrayIntoObj(params) {
     var hash = {};
@@ -67,6 +69,9 @@ $(document).ready(function () {
       },
       method: "POST",
       success: success,
+      error: function (error) {
+        console.log(error);
+      },
       data: {
         "name": file.name,
         "size": file.size,
@@ -81,6 +86,9 @@ $(document).ready(function () {
       dataType: "json",
       method: "POST",
       success: success,
+      error: function (error) {
+        console.log(error);
+      },
       headers: {
         "Authorization": bearer
       },

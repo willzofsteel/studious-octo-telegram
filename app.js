@@ -1,11 +1,49 @@
 $(document).ready(function () {
-  var r = new Resumable({
-    target: 'http://localhost:64444',
-    maxChunkRetries: 0,
-    chunkSize: 5242880,
-    forceChunkSize: true,
-    uploadMethod: 'PUT'
-  });
+
+  $('#upload-btn').click(uploadFiles);
+
+  function initResumable(targetFunc) {
+    var r = new Resumable({
+      target: targetFunc,
+      maxChunkRetries: 0,
+      chunkSize: 5242880,
+      forceChunkSize: true,
+      uploadMethod: 'PUT',
+      testChunks: false,
+      headers: {
+        "Authorization": bearer
+      }
+    });
+
+    r.assignBrowse(document.getElementById('file-input'));
+    r.on('fileAdded', function (file, event) { r.upload(); console.log('file-added'); });
+    r.on('chunkingComplete', function (file) { console.log('chunking-complete'); });
+    r.on('fileSuccess', function (file, message) { console.log('file-success'); });
+    r.on('fileError', function (file, message) { console.log('file-error'); });
+    return r;
+  }
+
+  function uploadFiles() {
+    var files = $('#file-input')[0].files;
+    for (var i=0; i < files.length; i++) {
+      var file = files[i];
+      mcsInitiateAssetForUpload(file, function (data) {
+        var assetId = data.assetId,
+          resumablejs = initResumable(function (params) {
+          var hash = convertParamsStringArrayIntoObj(params),
+            partnumber = hash.resumableChunkNumber;
+            return "https://io.cimediacloud.com/upload/multipart/" + assetId + "/" + partnumber;
+        });
+
+        resumablejs.addFile(file);
+        resumablejs.on('fileSuccess', function (file, message) {
+          mcsCompleteMultipartUploadForAsset(assetId, function (data) {
+            console.log("uploaded completed for " + assetId);
+          });
+        });
+      });
+    };
+  }
 
   function convertParamsStringArrayIntoObj(params) {
     var hash = {};
@@ -17,50 +55,38 @@ $(document).ready(function () {
     });
 
     return hash;
-  }
+  };
 
-
-  //1st mcs endpoint - intiate an asset
-  //2nd upload the parts
-  //3rd complete the upload
-  $('#upload-btn').click(uploadFiles);
-
-  r.assignBrowse(document.getElementById('file-input'));
-
-  r.on('fileAdded', function (file, event) {
-    console.log('file-added');
-  });
-
-  r.on('chunkingComplete', function (file) {
-    console.log('chunking-complete');
-  });
-
-  r.on('fileSuccess', function (file, message) {
-    console.log('file-success');
-  });
-
-  r.on('fileError', function (file, message) {
-    console.log('file-error');
-  });
-
-  function uploadFiles() {
-    r.upload();
-  }
-
-  function mcsInitiateAssetForUpload(fileName, size) {
-    //var url = "https://api.cimediacloud.com/upload/multipart";
+  function mcsInitiateAssetForUpload(file, success) {
     var url = "https://io.cimediacloud.com/upload/multipart"
-    $.ajax({
+    return $.ajax({
       url: url,
       dataType: "json",
       headers: {
-        "Authorization": "Bearer 75100e5ffc5d43f98749ad0e8a947a03"
+        "Authorization": bearer
       },
       method: "POST",
+      success: success,
       data: {
-        "name": fileName,
-        "size": size,
+        "name": file.name,
+        "size": file.size,
       }
     });
-  }
+  };
+
+  function mcsCompleteMultipartUploadForAsset(assetId, success) {
+    var url = "https://io.cimediacloud.com/upload/multipart/" + assetId + "/complete";
+    return $.ajax({
+      url: url,
+      dataType: "json",
+      method: "POST",
+      success: success,
+      headers: {
+        "Authorization": bearer
+      },
+      data: {
+        "assetId": assetId
+      }
+    });
+  };
 });

@@ -1,7 +1,7 @@
 $(document).ready(function () {
    var bearer = "Bearer 99905faaa8a64913b9ca162464ca9acd";
 
-  $('#upload-btn').click(uploadFiles);
+  $('#mcs-upload-btn').click(mcsUploadFiles);
 
   function initResumable(targetFunc) {
     var r = new Resumable({
@@ -25,8 +25,8 @@ $(document).ready(function () {
     return r;
   };
 
-  function uploadFiles() {
-    var files = $('#file-input')[0].files;
+  function mcsUploadFiles() {
+    var files = $('#mcs-file-input')[0].files;
     for (var i=0; i < files.length; i++) {
       var file = files[i];
       mcsInitiateAssetForUpload(file, function (data) {
@@ -59,28 +59,35 @@ $(document).ready(function () {
     return hash;
   };
 
+  //Step 1
   function mcsInitiateAssetForUpload(file, success) {
-    var url = "https://io.cimediacloud.com/upload/multipart"
-    return $.ajax({
-      url: url,
-      dataType: "json",
-      headers: {
-        "Authorization": bearer
-      },
-      method: "POST",
-      success: success,
-      error: function (error) {
-        console.log(error);
-      },
-      data: {
-        "name": file.name,
-        "size": file.size,
-      }
-    });
+    var url = "https://io.cimediacloud.com/upload/multipart";
+    ajaxPostIt(url, { "name": file.name, "size": file.size }, success);
   };
 
+  //Step 2
+  function mcsRetrieveBatchUrls(assetId, numOfChunks, success) {
+    var url = "https://io.cimediacloud.com/upload/multipart/" + assetId + "/batch";
+    ajaxPostIt(url, { "partNumbers": numOfChunks }, success);
+  };
+
+  //Step 3
+  //upload to batch urls
+  //
+
+  //Step 4
+  function mcsCompleteBatchParts(assetId, partsData, success) {
+    var url = "https://io.cimediacloud.com/upload/multipart/" + assetId + "/batch/complete";
+    ajaxPostIt(url, { "parts": partsData }, success);
+  };
+
+  //Step 5
   function mcsCompleteMultipartUploadForAsset(assetId, success) {
     var url = "https://io.cimediacloud.com/upload/multipart/" + assetId + "/complete";
+    ajaxPostIt(url, { "assetId": assetId }, success);
+  };
+
+  function ajaxPostIt(url, data, success) {
     return $.ajax({
       url: url,
       dataType: "json",
@@ -92,9 +99,7 @@ $(document).ready(function () {
       headers: {
         "Authorization": bearer
       },
-      data: {
-        "assetId": assetId
-      }
+      data: data
     });
   };
 });

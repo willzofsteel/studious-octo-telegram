@@ -1,5 +1,6 @@
 $(document).ready(function () {
-   var bearer = "Bearer 99905faaa8a64913b9ca162464ca9acd";
+   var bearer = "Bearer 811ad98a14894b78b0eedeeeed86233c";
+   var debugme = false;
 
   $('#mcs-upload-btn').click(mcsUploadFiles);
 
@@ -18,10 +19,13 @@ $(document).ready(function () {
       }
     });
 
-    r.on('fileAdded', function (file, event) { r.upload(); console.log('file-added'); });
-    r.on('chunkingComplete', function (file) { console.log('chunking-complete'); });
-    r.on('fileSuccess', function (file, message) { console.log('file-success'); });
-    r.on('fileError', function (file, message) { console.log('file-error'); });
+    if (debugme) {
+      r.on('fileAdded', function (file, event) { r.upload(); console.log('file-added'); });
+      r.on('chunkingComplete', function (file) { console.log('chunking-complete'); });
+      r.on('fileSuccess', function (file, message) { console.log('file-success'); });
+      r.on('fileError', function (file, message) { console.log('file-error'); });
+    }
+
     return r;
   };
 
@@ -29,20 +33,34 @@ $(document).ready(function () {
     var files = $('#mcs-file-input')[0].files;
     for (var i=0; i < files.length; i++) {
       var file = files[i];
+      //initiate asset
       mcsInitiateAssetForUpload(file, function (data) {
-        var assetId = data.assetId,
-          resumablejs = initResumable(function (params) {
-          var hash = convertParamsStringArrayIntoObj(params),
-            partnumber = hash.resumableChunkNumber;
-            return "https://io.cimediacloud.com/upload/multipart/" + assetId + "/" + partnumber;
+        var assetId = data.assetId;
+        //var resumablejs = initResumable(function (params) {
+        //  var hash = convertParamsStringArrayIntoObj(params),
+        //    partnumber = hash.resumableChunkNumber;
+        //    return "https://io.cimediacloud.com/upload/multipart/" + assetId + "/" + partnumber;
+        //});
+
+        // need to find how many chunks
+        var r = initResumable(null);
+        debugger;
+
+        r.on('chunkingComplete', function (file) {
+          debugger;
+          var numOfChunks = file.chunks.length;
+          mcsRetrieveBatchUrls(assetId, numOfChunks, function (data) {
+            debugger;
+          });
         });
 
-        resumablejs.addFile(file);
-        resumablejs.on('complete', function (file, message) {
+        r.on('complete', function (file, message) {
           mcsCompleteMultipartUploadForAsset(assetId, function (data) {
             console.log("uploaded completed for " + assetId);
           });
         });
+
+        r.addFile(file);
       });
     };
   };
@@ -67,6 +85,7 @@ $(document).ready(function () {
 
   //Step 2
   function mcsRetrieveBatchUrls(assetId, numOfChunks, success) {
+    debugger;
     var url = "https://io.cimediacloud.com/upload/multipart/" + assetId + "/batch";
     ajaxPostIt(url, { "partNumbers": numOfChunks }, success);
   };

@@ -1,22 +1,21 @@
 $(document).ready(function () {
-   var bearer = "Bearer 811ad98a14894b78b0eedeeeed86233c";
-   var debugme = false;
+   var bearer = "Bearer 2828077bae124e96822080444c4df913";
+   var debugme = true;
+   var partSize = (1024 * 1024 * 5) + 1;
 
   $('#mcs-upload-btn').click(mcsUploadFiles);
 
   function initResumable(targetFunc) {
     var r = new Resumable({
       target: targetFunc,
-      maxChunkRetries: 1,
-      chunkSize: 5242880,
-      forceChunkSize: false,
+      maxChunkRetries: 0,
+      chunkSize: partSize,
+      forceChunkSize: true,
       uploadMethod: 'PUT',
+      method: 'octet',
       testChunks: false,
-      prioritizeFirstAndLastChunk: true,
+      prioritizeFirstAndLastChunk: false,
       fileParameterName: 'part',
-      headers: {
-        "Authorization": bearer
-      }
     });
 
     if (debugme) {
@@ -35,32 +34,44 @@ $(document).ready(function () {
       var file = files[i];
       //initiate asset
       mcsInitiateAssetForUpload(file, function (data) {
-        var assetId = data.assetId;
-        //var resumablejs = initResumable(function (params) {
-        //  var hash = convertParamsStringArrayIntoObj(params),
-        //    partnumber = hash.resumableChunkNumber;
-        //    return "https://io.cimediacloud.com/upload/multipart/" + assetId + "/" + partnumber;
-        //});
+        var assetId = data.assetId,
+            partCount = data.partCount,
+            chunkNumbers = [];
 
-        // need to find how many chunks
-        var r = initResumable(null);
-        debugger;
+        for (var i = 0; i < partCount; i++) {
+          chunkNumbers[i] = i + 1;
+        };
 
-        r.on('chunkingComplete', function (file) {
-          debugger;
-          var numOfChunks = file.chunks.length;
-          mcsRetrieveBatchUrls(assetId, numOfChunks, function (data) {
-            debugger;
+          mcsRetrieveBatchUrls(assetId, chunkNumbers).done(function (data) {
+            var urlByChunk = {},
+                parts = data.parts.forEach(function (item) {
+              urlByChunk[item.partNumber] = item.uploadUrl;
+            });
+
+            var targetFunc = function (params) {
+              var hash = convertParamsStringArrayIntoObj(params),
+                  chunkNumber = hash.resumableChunkNumber;
+              return urlByChunk[chunkNumber];
+            };
+
+            var completeBatchFunc = function (file) {
+              mcsCompleteBatchParts(assetId, data.parts, function (data) {
+                console.log("uploaded completed for " + assetId);
+              });
+            };
+
+            var r = initResumable(targetFunc);
+            r.addFile(file);
+
+            r.on('chunkingComplete', r.upload);
+
+            r.on('error', function (message, file) {
+              console.log(message);
+            });
+
+            r.on('complete', function () {
+            });
           });
-        });
-
-        r.on('complete', function (file, message) {
-          mcsCompleteMultipartUploadForAsset(assetId, function (data) {
-            console.log("uploaded completed for " + assetId);
-          });
-        });
-
-        r.addFile(file);
       });
     };
   };
@@ -80,14 +91,18 @@ $(document).ready(function () {
   //Step 1
   function mcsInitiateAssetForUpload(file, success) {
     var url = "https://io.cimediacloud.com/upload/multipart";
-    ajaxPostIt(url, { "name": file.name, "size": file.size }, success);
+    ajaxPostIt(url, {
+      "name": file.name,
+      "size": file.size,
+      "partSize": partSize,
+      "createManifest": true,
+    }, success);
   };
 
   //Step 2
   function mcsRetrieveBatchUrls(assetId, numOfChunks, success) {
-    debugger;
     var url = "https://io.cimediacloud.com/upload/multipart/" + assetId + "/batch";
-    ajaxPostIt(url, { "partNumbers": numOfChunks }, success);
+    return ajaxPostIt(url, { "partNumbers": numOfChunks }, success);
   };
 
   //Step 3
@@ -109,6 +124,7 @@ $(document).ready(function () {
   function ajaxPostIt(url, data, success) {
     return $.ajax({
       url: url,
+      contentType: "application/json",
       dataType: "json",
       method: "POST",
       success: success,
@@ -118,7 +134,7 @@ $(document).ready(function () {
       headers: {
         "Authorization": bearer
       },
-      data: data
+      data: JSON.stringify(data)
     });
   };
 });

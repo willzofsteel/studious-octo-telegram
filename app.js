@@ -1,113 +1,102 @@
 $(document).ready(function () {
-   var bearer = "Bearer 2828077bae124e96822080444c4df913";
-   var debugme = true;
+   var bearer = "Bearer d69d8ed44feb40e19f2c631c8c05009c";
    var partSize = (1024 * 1024 * 5) + 1;
+   var local = {};
 
-  $('#mcs-upload-btn').click(mcsUploadFiles);
+  $('#create-btn').click(createAsset);
+  $('#initiate-btn').click(initiateAsset);
+  $('#request-btn').click(requestUrls);
+  $('#upload-btn').click(uploadParts);
+  $('#complete-part-btn').click(completeParts);
+  $('#complete-asset').click(completeAsset);
+  setText('select a file and Create Asset');
 
-  function initResumable(targetFunc) {
-    var r = new Resumable({
-      target: targetFunc,
-      maxChunkRetries: 0,
-      chunkSize: partSize,
-      forceChunkSize: true,
-      uploadMethod: 'PUT',
-      method: 'octet',
-      testChunks: false,
-      prioritizeFirstAndLastChunk: false,
-      fileParameterName: 'part',
-    });
+ function createAsset() {
+   var files = [].slice.call($('#mcs-file-input')[0].files),
+       url = "https://api.cimediacloud.com/assets/create",
+       mcs_assets = [];
 
-    if (debugme) {
-      r.on('fileAdded', function (file, event) { r.upload(); console.log('file-added'); });
-      r.on('chunkingComplete', function (file) { console.log('chunking-complete'); });
-      r.on('fileSuccess', function (file, message) { console.log('file-success'); });
-      r.on('fileError', function (file, message) { console.log('file-error'); });
-    }
+   local.assets = files.map(function (file, i) {
+     mcs_assets[i] = { "name": file.name, "size": file.size };
+     return { "name": file.name, "size": file.size, "file": file };
+   });
 
-    return r;
-  };
+   ajaxPostIt(url, mcs_assets, function (data) {
+     local.assets.map(function (item, i) {
+       local.assets[i].mcs_id  = data.items[i].id;
+     });
+     setText('Initiate Asset');
+   });
+ };
 
-  function mcsUploadFiles() {
-    var files = $('#mcs-file-input')[0].files;
-    for (var i=0; i < files.length; i++) {
-      var file = files[i];
-      //initiate asset
-      mcsInitiateAssetForUpload(file, function (data) {
-        var assetId = data.assetId,
-            partCount = data.partCount,
-            chunkNumbers = [];
+ function initiateAsset() {
+   local.assets.forEach(function (asset) {
+     var url = "https://io.cimediacloud.com/assets/"+ asset.mcs_id + "/upload/multipart";
+     ajaxPostIt(url, {
+       uploadMethod: "DirectToCloud",
+       partSize: partSize
+     },
+     function (data) {
+       asset.partCount = data.partCount;
+       setText('Request upload Urls');
+     });
+   });
+ };
 
-        for (var i = 0; i < partCount; i++) {
-          chunkNumbers[i] = i + 1;
-        };
+ function requestUrls() {
+   local.assets.forEach(function (asset) {
+     var url = "https://io.cimediacloud.com/upload/multipart/" + asset.mcs_id + "/batch",
+         partNumbers = [];
 
-          mcsRetrieveBatchUrls(assetId, chunkNumbers).done(function (data) {
-            var urlByChunk = {},
-                parts = data.parts.forEach(function (item) {
-              urlByChunk[item.partNumber] = item.uploadUrl;
-            });
+     for(var i=0; i < asset.partCount; i++) {
+       partNumbers[i] = i + 1;
+     };
 
-            var targetFunc = function (params) {
-              var hash = convertParamsStringArrayIntoObj(params),
-                  chunkNumber = hash.resumableChunkNumber;
-              return urlByChunk[chunkNumber];
-            };
+     ajaxPostIt(url, {
+       partNumbers: partNumbers
+     },function (data) {
+       asset.uploadParts = data.parts
+       setText('upload parts');
+     });
+   });
+ };
 
-            var completeBatchFunc = function (file) {
-              mcsCompleteBatchParts(assetId, data.parts, function (data) {
-                console.log("uploaded completed for " + assetId);
-              });
-            };
+ function uploadParts() {
+   local.assets.forEach(function (asset) {
+     var chunkedFile = new ChunkedFile(asset.file, {chunkSize: partSize});
 
-            var r = initResumable(targetFunc);
-            r.addFile(file);
+     var success = function (data) {
+       console.log(data);
+     };
 
-            r.on('chunkingComplete', r.upload);
+     var error = function (error) {
+       console.log(error);
+     };
 
-            r.on('error', function (message, file) {
-              console.log(message);
-            });
+     chunkedFile.chunks.forEach(function (chunk, i) {
+       var url = asset.uploadParts[i].uploadUrl;
+       Sender.send(url, 'POST', chunk.filePart, success, error);
+     });
 
-            r.on('complete', function () {
-            });
-          });
-      });
-    };
-  };
+     setText('complete the parts');
+   });
+ };
 
-  function convertParamsStringArrayIntoObj(params) {
-    var hash = {};
-    params.forEach(function (item) {
-      var keyvalue = item.split("="),
-        key = keyvalue[0],
-        value = keyvalue[1];
-      hash[key] = value;
-    });
+ function completeParts() {
+   setText('complete the asset');
+ };
 
-    return hash;
-  };
+ function completeAsset() {
+ };
 
-  //Step 1
-  function mcsInitiateAssetForUpload(file, success) {
-    var url = "https://io.cimediacloud.com/upload/multipart";
-    ajaxPostIt(url, {
-      "name": file.name,
-      "size": file.size,
-      "partSize": partSize,
-      "createManifest": true,
-    }, success);
-  };
+ function setText(message) {
+   $('#output').text(message);
+   setData(local);
+ };
 
-  //Step 2
-  function mcsRetrieveBatchUrls(assetId, numOfChunks, success) {
-    var url = "https://io.cimediacloud.com/upload/multipart/" + assetId + "/batch";
-    return ajaxPostIt(url, { "partNumbers": numOfChunks }, success);
-  };
-
-  //Step 3
-  //upload to batch urls
-  //
+ function setData(data) {
+   $('#asset-data').val(JSON.stringify(data, null, 2));
+ };
 
   //Step 4
   function mcsCompleteBatchParts(assetId, partsData, success) {

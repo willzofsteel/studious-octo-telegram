@@ -1,5 +1,5 @@
 $(document).ready(function () {
-   var bearer = "Bearer d69d8ed44feb40e19f2c631c8c05009c";
+   var bearer = "Bearer 7d468656f99d437eabebbf48d30063b5";
    var partSize = (1024 * 1024 * 5) + 1;
    var local = {};
 
@@ -75,7 +75,7 @@ $(document).ready(function () {
 
      chunkedFile.chunks.forEach(function (chunk, i) {
        var url = asset.uploadParts[i].uploadUrl;
-       Sender.send(url, 'POST', chunk.filePart, success, error);
+       Sender.send(url, 'PUT', chunk.filePart, success, error);
      });
 
      setText('complete the parts');
@@ -83,10 +83,27 @@ $(document).ready(function () {
  };
 
  function completeParts() {
-   setText('complete the asset');
+   local.assets.map(function (asset) {
+     partNumbers = asset.uploadParts.map(function (part) {
+       return {
+         partNumber: part.partNumber
+       }
+     });
+
+     console.log('completing parts....');
+     mcsCompleteBatchParts(asset.mcs_id, partNumbers, function () {
+       setText('complete the asset');
+     });
+   });
  };
 
  function completeAsset() {
+   local.assets.forEach(function (asset) {
+     console.log('completing the asset');
+     mcsCompleteMultipartUploadForAsset(asset.mcs_id, function () {
+        setText('done!!');
+     });
+   });
  };
 
  function setText(message) {

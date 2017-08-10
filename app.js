@@ -1,79 +1,119 @@
 $(document).ready(function () {
-   var bearer = "Bearer 99905faaa8a64913b9ca162464ca9acd";
+   var bearer = "Bearer ";
+   var partSize = (1024 * 1024 * 5) + 1;
+   var local = {};
 
-  $('#mcs-upload-btn').click(mcsUploadFiles);
+  $('#create-btn').click(createAsset);
+  $('#initiate-btn').click(initiateAsset);
+  $('#request-btn').click(requestUrls);
+  $('#upload-btn').click(uploadParts);
+  $('#complete-part-btn').click(completeParts);
+  $('#complete-asset').click(completeAsset);
+  setText('select a file and Create Asset');
 
-  function initResumable(targetFunc) {
-    var r = new Resumable({
-      target: targetFunc,
-      maxChunkRetries: 1,
-      chunkSize: 5242880,
-      forceChunkSize: false,
-      uploadMethod: 'PUT',
-      testChunks: false,
-      prioritizeFirstAndLastChunk: true,
-      fileParameterName: 'part',
-      headers: {
-        "Authorization": bearer
-      }
-    });
+ function createAsset() {
+   var files = [].slice.call($('#mcs-file-input')[0].files),
+       url = "https://api.cimediacloud.com/assets/create",
+       mcs_assets = [];
 
-    r.on('fileAdded', function (file, event) { r.upload(); console.log('file-added'); });
-    r.on('chunkingComplete', function (file) { console.log('chunking-complete'); });
-    r.on('fileSuccess', function (file, message) { console.log('file-success'); });
-    r.on('fileError', function (file, message) { console.log('file-error'); });
-    return r;
-  };
+   local.assets = files.map(function (file, i) {
+     mcs_assets[i] = { "name": file.name, "size": file.size };
+     return { "name": file.name, "size": file.size, "file": file };
+   });
 
-  function mcsUploadFiles() {
-    var files = $('#mcs-file-input')[0].files;
-    for (var i=0; i < files.length; i++) {
-      var file = files[i];
-      mcsInitiateAssetForUpload(file, function (data) {
-        var assetId = data.assetId,
-          resumablejs = initResumable(function (params) {
-          var hash = convertParamsStringArrayIntoObj(params),
-            partnumber = hash.resumableChunkNumber;
-            return "https://io.cimediacloud.com/upload/multipart/" + assetId + "/" + partnumber;
-        });
+   ajaxPostIt(url, mcs_assets, function (data) {
+     local.assets.map(function (item, i) {
+       local.assets[i].mcs_id  = data.items[i].id;
+     });
+     setText('Initiate Asset');
+   });
+ };
 
-        resumablejs.addFile(file);
-        resumablejs.on('complete', function (file, message) {
-          mcsCompleteMultipartUploadForAsset(assetId, function (data) {
-            console.log("uploaded completed for " + assetId);
-          });
-        });
-      });
-    };
-  };
+ function initiateAsset() {
+   local.assets.forEach(function (asset) {
+     var url = "https://io.cimediacloud.com/assets/"+ asset.mcs_id + "/upload/multipart";
+     ajaxPostIt(url, {
+       uploadMethod: "DirectToCloud",
+       partSize: partSize
+     },
+     function (data) {
+       asset.partCount = data.partCount;
+       setText('Request upload Urls');
+     });
+   });
+ };
 
-  function convertParamsStringArrayIntoObj(params) {
-    var hash = {};
-    params.forEach(function (item) {
-      var keyvalue = item.split("="),
-        key = keyvalue[0],
-        value = keyvalue[1];
-      hash[key] = value;
-    });
+ function requestUrls() {
+   local.assets.forEach(function (asset) {
+     var url = "https://io.cimediacloud.com/upload/multipart/" + asset.mcs_id + "/batch",
+         partNumbers = [];
 
-    return hash;
-  };
+     for(var i=0; i < asset.partCount; i++) {
+       partNumbers[i] = i + 1;
+     };
 
-  //Step 1
-  function mcsInitiateAssetForUpload(file, success) {
-    var url = "https://io.cimediacloud.com/upload/multipart";
-    ajaxPostIt(url, { "name": file.name, "size": file.size }, success);
-  };
+     ajaxPostIt(url, {
+       partNumbers: partNumbers
+     },function (data) {
+       asset.uploadParts = data.parts
+       setText('upload parts');
+     });
+   });
+ };
 
-  //Step 2
-  function mcsRetrieveBatchUrls(assetId, numOfChunks, success) {
-    var url = "https://io.cimediacloud.com/upload/multipart/" + assetId + "/batch";
-    ajaxPostIt(url, { "partNumbers": numOfChunks }, success);
-  };
+ function uploadParts() {
+   local.assets.forEach(function (asset) {
+     var chunkedFile = new ChunkedFile(asset.file, {chunkSize: partSize});
 
-  //Step 3
-  //upload to batch urls
-  //
+     var success = function (data) {
+       console.log(data);
+     };
+
+     var error = function (error) {
+       console.log(error);
+     };
+
+     chunkedFile.chunks.forEach(function (chunk, i) {
+       var url = asset.uploadParts[i].uploadUrl;
+       Sender.send(url, 'PUT', chunk.filePart, success, error);
+     });
+
+     setText('complete the parts');
+   });
+ };
+
+ function completeParts() {
+   local.assets.map(function (asset) {
+     partNumbers = asset.uploadParts.map(function (part) {
+       return {
+         partNumber: part.partNumber
+       }
+     });
+
+     console.log('completing parts....');
+     mcsCompleteBatchParts(asset.mcs_id, partNumbers, function () {
+       setText('complete the asset');
+     });
+   });
+ };
+
+ function completeAsset() {
+   local.assets.forEach(function (asset) {
+     console.log('completing the asset');
+     mcsCompleteMultipartUploadForAsset(asset.mcs_id, function () {
+        setText('done!!');
+     });
+   });
+ };
+
+ function setText(message) {
+   $('#output').text(message);
+   setData(local);
+ };
+
+ function setData(data) {
+   $('#asset-data').val(JSON.stringify(data, null, 2));
+ };
 
   //Step 4
   function mcsCompleteBatchParts(assetId, partsData, success) {
@@ -90,6 +130,7 @@ $(document).ready(function () {
   function ajaxPostIt(url, data, success) {
     return $.ajax({
       url: url,
+      contentType: "application/json",
       dataType: "json",
       method: "POST",
       success: success,
@@ -99,7 +140,7 @@ $(document).ready(function () {
       headers: {
         "Authorization": bearer
       },
-      data: data
+      data: JSON.stringify(data)
     });
   };
 });

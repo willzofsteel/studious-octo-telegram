@@ -3,19 +3,27 @@
   <head>
     <script type="text/javascript" src="jquery-3.2.1.min.js"></script>
     <script type="text/javascript" src="resumable.js"></script>
+    <script type="text/javascript" src="chunker.js"></script>
+    <script type="text/javascript" src="sender.js"></script>
     <script type="text/javascript" src="app.js"></script>
   </head>
   <body>
+    <h1>MCS Http Multipart Upload</h1>
+    <input id="mcs-file-input" type="file" />
     <section>
-      <h1> mcs upload</h1>
-      <input id="mcs-file-input" type="file" />
-      <button id="mcs-upload-btn" type="submit"> upload file</button>
+      <button id="create-btn" type="submit">create assets</button>
+      <button id="initiate-btn" type="submit">initiate asset for multipart</button>
+      <button id="request-btn" type="submit">request urls for upload</button>
+      <button id="upload-btn" type="submit">upload parts</button>
+      <button id="complete-part-btn" type="submit">complete parts</button>
+      <button id="complete-asset" type="submit">complete asset</button>
     </section>
 
-    <section>
-      <h1> local node server upload</h1>
-      <input id="local-file-input" type="file" />
-      <button id="local-upload-btn" type="submit"> upload file</button>
-    </section>
+    <br />
+    <label id="output"></label>
+
+    <br />
+    <textarea id="asset-data" style="width:75%;height:440px;">
+    </textarea>
   </body>
 </html>
